@@ -1,5 +1,5 @@
 "use server";
-import { ID, Query } from "node-appwrite";
+import { AppwriteException, ID, Query } from "node-appwrite";
 import {
   BUCKET_ID,
   DATABASE_ID,
@@ -13,6 +13,16 @@ import {
 import { parseStringify } from "../utils";
 import { InputFile } from "node-appwrite/file";
 
+// Error wrapper
+const handleAppwriteError = (error: unknown, context: string) => {
+  if (error instanceof AppwriteException) {
+    console.error(`Appwrite Error (${context}):`, error.message);
+    throw new Error(`Failed to ${context}: ${error.message}`);
+  }
+  console.error(`Unknown Error (${context}):`, error);
+  throw new Error(`Unexpected error during ${context}`);
+};
+
 export const createUser = async (user: CreateUserParams) => {
   try {
     const newUser = await users.create(
@@ -24,13 +34,15 @@ export const createUser = async (user: CreateUserParams) => {
     );
     console.log({ newUser });
     return parseStringify(newUser);
-  } catch (error: any) {
-    if (error && error?.code === 409) {
+  } catch (error) {
+    if (error instanceof AppwriteException && error.code === 409) {
       const documents = await users.list([Query.equal("email", [user.email])]);
-      return documents?.users[0];
-    } else {
-      console.log("err", error);
+      if (documents.users.length === 0) {
+        throw new Error("User exists but couldn't be retrieved");
+      }
+      return parseStringify(documents.users[0]);
     }
+    handleAppwriteError(error, "create user");
   }
 };
 
@@ -84,4 +96,3 @@ export const registerPatient = async ({
     console.log(error);
   }
 };
-
